@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Golf Value Map — MN Golf Card + PCC Explorer</title>
+<meta name="description" content="Find, filter and compare Minnesota Golf Card and Public Country Club courses near you.">
+
+<!-- Leaflet map library (free, no API key needed) -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@500;600;700&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="styles.css">
+
+<!-- Course data. Loaded as a script (not fetched) so the app works even when
+     you just double-click index.html. Regenerate with build_data.py, or edit
+     data/courses.js directly. -->
+<script src="data/courses.js"></script>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-tee" aria-hidden="true"></span>
+    <div>
+      <h1>Golf Value Map</h1>
+      <p class="brand-sub">MN Golf Card + Public Country Club</p>
+    </div>
+  </div>
+  <button id="btn-locate" class="btn btn-accent" title="Use my location">
+    <span aria-hidden="true">◎</span> Locate me
+  </button>
+</header>
+
+<!-- Shared-shortlist banner (appears only when someone opens a shared link) -->
+<div id="share-banner" class="share-banner hidden">
+  <span>Viewing a shared shortlist (<span id="share-count"></span> courses)</span>
+  <button id="btn-clear-share" class="btn btn-ghost">Show all courses</button>
+</div>
+
+<div id="map" role="application" aria-label="Course map"></div>
+
+<!-- Map layer toggles -->
+<div class="layerbar" role="group" aria-label="Map layers">
+  <button class="layer-chip on" data-layer="mgc"><span class="dot dot-mgc"></span>Golf Card</button>
+  <button class="layer-chip on" data-layer="pcc"><span class="dot dot-pcc"></span>PCC</button>
+  <button class="layer-chip on" data-layer="both"><span class="dot dot-both"></span>Both</button>
+  <button class="layer-chip on" data-layer="fav"><span class="dot dot-fav">★</span>Favorites</button>
+</div>
+
+<main class="panel">
+
+  <!-- Search + filters -->
+  <div class="controls">
+    <input id="search" type="search" placeholder="Search course or city…" aria-label="Search course or city">
+    <div class="chips" role="group" aria-label="Filters">
+      <select id="f-program" class="chip-select" aria-label="Program filter">
+        <option value="all">All programs</option>
+        <option value="mgc">Golf Card only</option>
+        <option value="pcc">PCC only</option>
+        <option value="both">Both programs</option>
+        <option value="anymgc">Any Golf Card</option>
+        <option value="anypcc">Any PCC</option>
+      </select>
+      <select id="f-radius" class="chip-select" aria-label="Distance radius">
+        <option value="0">Any distance</option>
+        <option value="15">Within 15 mi</option>
+        <option value="30">Within 30 mi</option>
+        <option value="45">Within 45 mi</option>
+        <option value="60">Within 60 mi</option>
+      </select>
+      <button class="chip" data-filter="today">Playable now</button>
+      <button class="chip" data-filter="weekend">Weekend-friendly</button>
+      <button class="chip" data-filter="weekday">Weekday-only</button>
+      <button class="chip" data-filter="low">Low restriction</button>
+      <button class="chip" data-filter="rar">Ride-a-Round</button>
+      <button class="chip" data-filter="fav">★ Favorites</button>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <nav class="tabs" role="tablist">
+    <button class="tab on" data-tab="list" role="tab">Courses <span id="count-badge" class="count"></span></button>
+    <button class="tab" data-tab="best" role="tab">Best today</button>
+    <button class="tab" data-tab="compare" role="tab">Compare <span id="cmp-badge" class="count"></span></button>
+    <button class="tab" data-tab="savings" role="tab">Savings</button>
+  </nav>
+
+  <!-- Tab: course list -->
+  <section id="tab-list" class="tabpane on">
+    <div id="course-list" class="cards"></div>
+  </section>
+
+  <!-- Tab: best today -->
+  <section id="tab-best" class="tabpane">
+    <button id="btn-suggest" class="btn btn-hero">⛳ Where should we play today?</button>
+    <div id="suggest-result"></div>
+    <div id="best-cards" class="cards"></div>
+    <p class="fineprint">“Best” picks are based on distance, listed restrictions and today’s date. Always confirm with the course before driving out.</p>
+  </section>
+
+  <!-- Tab: compare -->
+  <section id="tab-compare" class="tabpane">
+    <p class="hint">Tap <strong>+ Compare</strong> on 2–4 course cards, then review them side by side here.</p>
+    <div id="compare-wrap"></div>
+    <div class="row-gap">
+      <button id="btn-share" class="btn btn-secondary">Share this shortlist</button>
+      <button id="btn-clear-cmp" class="btn btn-ghost">Clear</button>
+    </div>
+  </section>
+
+  <!-- Tab: savings tracker -->
+  <section id="tab-savings" class="tabpane">
+    <div class="savings-total card-surface">
+      <span>Season savings</span>
+      <strong id="savings-total">$0</strong>
+    </div>
+    <form id="savings-form" class="card-surface">
+      <h3>Log a round</h3>
+      <label>Course
+        <select id="log-course" required></select>
+      </label>
+      <div class="two-col">
+        <label>Date <input type="date" id="log-date" required></label>
+        <label>Program
+          <select id="log-program">
+            <option value="Golf Card">Golf Card</option>
+            <option value="PCC">PCC</option>
+            <option value="Ride-a-Round">Ride-a-Round</option>
+            <option value="Other">Other</option>
+          </select>
+        </label>
+      </div>
+      <div class="two-col">
+        <label>Normal green fee ($) <input type="number" id="log-fee" min="0" step="1" placeholder="45"></label>
+        <label>Amount saved ($) <input type="number" id="log-saved" min="0" step="1" placeholder="45" required></label>
+      </div>
+      <button class="btn btn-accent" type="submit">Add round</button>
+    </form>
+    <div id="savings-log" class="cards"></div>
+  </section>
+
+  <footer class="fineprint">
+    Data compiled from <a href="https://minnesotagolfcard.com" target="_blank" rel="noopener">minnesotagolfcard.com</a> and
+    <a href="https://www.thepubliccc.com" target="_blank" rel="noopener">thepubliccc.com</a> (2026 season).
+    This is an unofficial planning tool — offers and restrictions change, so verify with the course and program before playing.
+    Map pins are city-level approximations unless refined.
+  </footer>
+</main>
+
+<!-- Course detail bottom sheet -->
+<div id="sheet-backdrop" class="sheet-backdrop hidden"></div>
+<div id="sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+  <div class="sheet-handle" aria-hidden="true"></div>
+  <div id="sheet-content"></div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
