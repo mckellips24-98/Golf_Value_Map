@@ -630,29 +630,34 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSheet
 
 function showDataError() {
   $("#course-list").innerHTML =
-    `<div class="empty">Couldn't find <code>data/courses.js</code>.<br>
-     Make sure the <code>data</code> folder (with <code>courses.js</code> inside)
-     sits in the same folder as <code>index.html</code>. See the README.</div>`;
+    `<div class="empty">Couldn't find the course data file (<code>courses.js</code>).<br>
+     Make sure <code>courses.js</code> is uploaded in the same place as
+     <code>index.html</code> (either next to it, or in a <code>data</code> folder).
+     See the README.</div>`;
+}
+
+// Where the data file might live. The app tries these in order, so it works
+// whether courses.js is inside a data/ folder or sitting next to index.html
+// (GitHub's drag-and-drop uploader often flattens folders).
+const DATA_PATHS = ["data/courses.js", "courses.js"];
+
+function loadDataFrom(i) {
+  if (i >= DATA_PATHS.length) return showDataError();
+  const s = document.createElement("script");
+  s.src = DATA_PATHS[i];
+  s.onload = () => (window.GVM_DATA ? boot() : loadDataFrom(i + 1));
+  s.onerror = () => loadDataFrom(i + 1);
+  document.head.appendChild(s);
 }
 
 function boot() {
-  // Course data is provided by data/courses.js, which sets window.GVM_DATA.
-  // Normally index.html loads it with a <script> tag. If that's missing (e.g. an
-  // older index.html got mixed in), load it ourselves — a <script> element works
-  // even when the page is opened directly from the file system, where fetch does
-  // not. This makes the app boot as long as data/courses.js is next to index.html.
+  // Course data (window.GVM_DATA) normally comes from a <script> tag in
+  // index.html. If it isn't there — an older index.html, or the data file ended
+  // up in a different folder — load it ourselves, trying each known location.
+  // A <script> element works even when the page is opened straight from disk.
   const data = window.GVM_DATA;
   if (!data || !Array.isArray(data.courses)) {
-    if (!window.__gvmTriedInject) {
-      window.__gvmTriedInject = true;
-      const s = document.createElement("script");
-      s.src = "data/courses.js";
-      s.onload = boot;            // data is now loaded — run boot again
-      s.onerror = showDataError;  // file genuinely not found
-      document.head.appendChild(s);
-      return;
-    }
-    return showDataError();
+    return loadDataFrom(0);
   }
   S.meta = data.meta;
   S.courses = data.courses;
